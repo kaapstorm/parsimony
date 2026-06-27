@@ -34,7 +34,8 @@ def explode_bracket(node, inner, outer):
     new_kids = []
     for i, kid in enumerate(kids):
         last = i == len(kids) - 1
-        comma = cst.Comma(whitespace_after=parenthesized_ws(outer if last else inner))
+        whitespace_after = parenthesized_ws(outer if last else inner)
+        comma = cst.Comma(whitespace_after=whitespace_after)
         new_kids.append(kid.with_changes(comma=comma))
 
     open_ws = parenthesized_ws(inner)
@@ -50,7 +51,10 @@ def explode_bracket(node, inner, outer):
         lbrace = node.lbrace.with_changes(whitespace_after=open_ws)
         return node.with_changes(lbrace=lbrace, elements=new_kids)
     assert isinstance(node, cst.Tuple)
-    lpar = [node.lpar[0].with_changes(whitespace_after=open_ws), *node.lpar[1:]]
+    lpar = [
+        node.lpar[0].with_changes(whitespace_after=open_ws),
+        *node.lpar[1:],
+    ]
     return node.with_changes(lpar=lpar, elements=new_kids)
 
 

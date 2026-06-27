@@ -7,7 +7,9 @@ from pathlib import Path
 from parsimony.core import LINE_LENGTH
 from parsimony.formatter import format_code
 
-DESCRIPTION = 'A minimalist line-breaker that adds the fewest breaks to fit the line.'
+DESCRIPTION = (
+    'A minimalist line-breaker that adds the fewest breaks to fit the line.'
+)
 
 
 def iter_paths(paths):
@@ -51,7 +53,10 @@ def main(argv=None):
         try:
             formatted, skipped = format_code(original)
         except Exception as exc:  # noqa: BLE001 - dry-run resilience
-            print(f'{path}: ERROR {type(exc).__name__}: {exc}', file=sys.stderr)
+            print(
+                f'{path}: ERROR {type(exc).__name__}: {exc}',
+                file=sys.stderr,
+            )
             continue
         report_skipped(str(path), skipped)
         if formatted == original:
