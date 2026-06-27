@@ -4,12 +4,12 @@ Parsimony
 A minimalist line-breaker that adds the fewest breaks to fit the line.
 
 Unlike black/blue/ruff, which explode the outermost bracket first and
-stack every closing bracket on its own line, this tool makes the
+stack every closing bracket on its own line, Parsimony makes the
 smallest change that fits an over-long line, using two complementary
-strategies: exploding a bracket, or breaking a method chain.
+strategies.
 
-Exploding a bracket opens the minimum number of brackets and coalesces
-adjacent ones. e.g.
+**Explode a bracket** — open the minimum number of brackets and coalesce
+adjacent ones:
 
 ```python
 response = authed_client().get(reverse('forwarding:detail', args=[c.id]))
@@ -24,29 +24,45 @@ response = authed_client().get(reverse(
 ))
 ```
 
-rather than the deep staircase that black/ruff produce.
-
-Breaking a method chain splits a long `.`-chain one segment per line.
-It is the fallback for lines no bracket can shorten. e.g.
+**Break a method chain** — split a long `.`-chain one segment per line.
+This is done for lines that can't be shortened by exploding a bracket:
 
 ```python
-django_queryset = SomeModel.objects.filter(active=True).order_by('-id')
+queryset = SomeModel.objects.filter(active=True).order_by('-last_modified_at')
 ```
 
 becomes
 
 ```python
-django_queryset = (
+queryset = (
     SomeModel
     .objects
     .filter(active=True)
-    .order_by('-id')
+    .order_by('-last_modified_at')
 )
 ```
 
-The motivation is readability: coalescing keeps related calls grouped
-visually and reduces vertical noise, while chain-breaking gives long
-fluent pipelines a clean one-operation-per-line shape.
+Both keep related calls grouped and give long pipelines a clean
+one-operation-per-line shape.
+
+
+Usage
+-----
+
+Format files or directories (recurses for `*.py`):
+
+```shell
+parsimony -i src/       # rewrite in place
+parsimony --check src/  # print a diff, exit 1 if anything would change
+parsimony src/file.py   # print formatted output to stdout
+```
+
+Read from stdin and write to stdout:
+
+```shell
+parsimony < src/file.py
+cat src/file.py | parsimony
+```
 
 
 Installation
@@ -99,8 +115,8 @@ meaning. Restricting to multi-item containers avoids that. It also
 avoids ugly single-element splits.
 
 
-Known limitations
------------------
+Limitations
+-----------
 
 - Lines long for non-bracket, non-method-chain reasons — ternaries,
   boolean/arithmetic chains, pure attribute chains (no calls), long
