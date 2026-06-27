@@ -45,3 +45,34 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract changelog entry
+        id: changelog
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          python3 -c '
+          import re, os
+          version = os.environ["VERSION"].lstrip("v")
+          text = open("CHANGELOG.md").read()
+          m = re.search(
+              rf"\[{re.escape(version)}\] \([^)]+\)\n-+\n(.*?)(?=\n\[{re.escape(version)}\]: |\Z)",
+              text, re.DOTALL,
+          )
+          print(m.group(1).strip() if m else "")
+          ' > /tmp/notes.txt
+          {
+            echo 'notes<<NOTES_EOF'
+            cat /tmp/notes.txt
+            echo 'NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+      - uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.notes }}
