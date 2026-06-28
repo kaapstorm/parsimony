@@ -1,6 +1,14 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+### Internal
+
+- Added Python 3.11 as a supported version
+
+
 [0.1.1] (2026-06-26)
 --------------------
 
