@@ -3,7 +3,7 @@ name = "kaapstorm-parsimony"
 version = "0.1.1"
 description = "A minimalist Python formatting tool"
 readme = "README.md"
-requires-python = ">=3.12,<3.15"
+requires-python = ">=3.11,<3.15"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [
@@ -22,6 +22,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
