@@ -1,12 +1,14 @@
 Changelog
 =========
 
-Unreleased
-----------
+[0.1.2] (2026-06-28)
+--------------------
 
 ### Internal
 
 - Added Python 3.11 as a supported version
+
+[0.1.2]: https://github.com/kaapstorm/parsimony/releases/tag/v0.1.2
 
 
 [0.1.1] (2026-06-26)
