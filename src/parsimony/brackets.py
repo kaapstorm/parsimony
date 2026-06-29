@@ -109,6 +109,10 @@ class BracketCollector(cst.CSTVisitor):
         self.depth = 0
 
     def on_visit(self, node):
+        if isinstance(node, cst.FormattedString):
+            # Brackets inside an f-string are string content, not code:
+            # exploding them would corrupt the literal. Don't descend.
+            return False
         if isinstance(node, BRACKETED):
             pos = self.get_metadata(PositionProvider, node)
             already = '\n' in cst.Module([]).code_for_node(node)

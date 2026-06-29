@@ -1,6 +1,14 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+### Fixed
+
+- No longer reformats code inside f-string interpolations.
+
+
 [0.1.2] (2026-06-28)
 --------------------
 

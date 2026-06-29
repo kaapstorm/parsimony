@@ -132,6 +132,10 @@ class ChainCollector(cst.CSTVisitor):
         self.found = []
 
     def on_visit(self, node):
+        if isinstance(node, cst.FormattedString):
+            # A chain inside an f-string is string content, not code:
+            # breaking it would corrupt the literal. Don't descend.
+            return False
         if isinstance(node, (cst.Call, cst.Attribute)):
             parent = self.get_metadata(ParentNodeProvider, node)
             in_spine = (
