@@ -17,6 +17,8 @@ def exploding_one_call_leaves_sibling_chained_calls_intact():
     # All calls in a left-leaning chain share a start position, so the
     # exploder must match the full span -- otherwise it also "explodes"
     # the trailing empty call into ``).build_result(\n)``.
+    # ``configure`` is multi-arg, so exploding it fits the line; the
+    # chain itself (configure + build) must be left intact.
     code = (
         'data = some_builder.configure('
         'option_one=1, option_two=2, option_three=3).build_result()\n'
@@ -63,24 +65,6 @@ def breaking_a_chain_is_idempotent():
         )
     """)
     assert fmt(already_broken) == already_broken
-
-
-@test
-def prefers_exploding_a_bracket_over_breaking_the_chain():
-    # ``configure`` is multi-arg, so exploding it fits the line; the
-    # chain itself (configure + build) must be left intact.
-    code = (
-        'data = some_builder.configure('
-        'option_one=1, option_two=2, option_three=3).build_result()\n'
-    )
-    expected = dedent("""\
-        data = some_builder.configure(
-            option_one=1,
-            option_two=2,
-            option_three=3,
-        ).build_result()
-    """)
-    assert fmt(code) == expected
 
 
 @test
