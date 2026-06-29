@@ -119,3 +119,25 @@ def short_chain_is_left_alone_and_reported():
     formatted, skipped = parsimony.format_code(code)
     assert formatted == code
     assert len(skipped) == 1
+
+
+@test
+def bracket_in_string_is_left_alone():
+    code = (
+        'string = f\'A bracket that looks like it should be exploded, but '
+        'should not: {func(["one", "two", "three"])}\'\n'
+    )
+    formatted, skipped = parsimony.format_code(code)
+    assert formatted == code
+    assert len(skipped) == 1
+
+
+@test
+def chain_in_string_is_left_alone():
+    code = (
+        'string = f\'A chain that looks breakable but is not: '
+        '{obj.filter_one("a").filter_two("b").filter_three("c")}\'\n'
+    )
+    formatted, skipped = parsimony.format_code(code)
+    assert formatted == code
+    assert len(skipped) == 1
