@@ -1,6 +1,14 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+### Internal
+
+- Simplified tests.
+
+
 [0.1.3] (2026-06-29)
 --------------------
 
