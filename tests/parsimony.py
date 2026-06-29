@@ -2,7 +2,7 @@
 Tests for the parsimony line-breaker.
 """
 from textwrap import dedent
-from testsweet import test
+from testsweet import params, test
 
 import parsimony
 
@@ -84,35 +84,24 @@ def chain_break_reindents_already_exploded_segment_args():
 
 
 @test
-def short_chain_is_left_alone_and_reported():
-    # One call segment -- not a chain. No multi-item bracket either, so
-    # there is nothing to break; report it instead.
-    code = (
+@params([
+    (
+        # No multi-item bracket, one call segment (not a chain)
         'result = some_object.some_method('
-        'an_argument_that_is_really_quite_long_indeed_yes)\n'
-    )
-    formatted, skipped = parsimony.format_code(code)
-    assert formatted == code
-    assert len(skipped) == 1
-
-
-@test
-def bracket_in_string_is_left_alone():
-    code = (
+        'an_argument_that_is_really_quite_long_indeed_yes)\n',
+    ),
+    (
+        # Bracket in f-string is left alone
         'string = f\'A bracket that looks like it should be exploded, but '
-        'should not: {func(["one", "two", "three"])}\'\n'
-    )
-    formatted, skipped = parsimony.format_code(code)
-    assert formatted == code
-    assert len(skipped) == 1
-
-
-@test
-def chain_in_string_is_left_alone():
-    code = (
+        'should not: {func(["one", "two", "three"])}\'\n',
+    ),
+    (
+        # Chain in f-string is left alone
         'string = f\'A chain that looks breakable but is not: '
-        '{obj.filter_one("a").filter_two("b").filter_three("c")}\'\n'
-    )
+        '{obj.filter_one("a").filter_two("b").filter_three("c")}\'\n',
+    ),
+])
+def overlong_but_unfixable_is_left_alone_and_reported(code):
     formatted, skipped = parsimony.format_code(code)
     assert formatted == code
     assert len(skipped) == 1
