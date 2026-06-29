@@ -1,12 +1,14 @@
 Changelog
 =========
 
-Unreleased
-----------
+[0.1.3] (2026-06-29)
+--------------------
 
 ### Fixed
 
 - No longer reformats code inside f-string interpolations.
+
+[0.1.3]: https://github.com/kaapstorm/parsimony/releases/tag/v0.1.3
 
 
 [0.1.2] (2026-06-28)
