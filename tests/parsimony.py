@@ -34,14 +34,8 @@ def exploding_one_call_leaves_sibling_chained_calls_intact():
 
 
 @test
-def breaks_long_method_chain():
-    code = (
-        'django_queryset = SomeModel.objects'
-        ".filter(some_field='somevalue')"
-        ".order_by('-some_other_field')"
-        ".prefetch_related('related')\n"
-    )
-    expected = dedent("""\
+class BreakingChains:
+    BROKEN_CHAIN = dedent("""\
         django_queryset = (
             SomeModel
             .objects
@@ -50,21 +44,18 @@ def breaks_long_method_chain():
             .prefetch_related('related')
         )
     """)
-    assert fmt(code) == expected
 
-
-@test
-def breaking_a_chain_is_idempotent():
-    already_broken = dedent("""\
-        django_queryset = (
-            SomeModel
-            .objects
-            .filter(some_field='somevalue')
-            .order_by('-some_other_field')
-            .prefetch_related('related')
+    def breaks_long_method_chain(self):
+        code = (
+            'django_queryset = SomeModel.objects'
+            ".filter(some_field='somevalue')"
+            ".order_by('-some_other_field')"
+            ".prefetch_related('related')\n"
         )
-    """)
-    assert fmt(already_broken) == already_broken
+        assert fmt(code) == self.BROKEN_CHAIN
+
+    def breaking_a_chain_is_idempotent(self):
+        assert fmt(self.BROKEN_CHAIN) == self.BROKEN_CHAIN
 
 
 @test
