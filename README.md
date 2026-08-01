@@ -24,6 +24,28 @@ response = authed_client().get(reverse(
 ))
 ```
 
+The same applies to the parenthesised containers in `def`/`async def` and
+`class` headers — a long parameter list or base-class list is exploded one
+element per line:
+
+```python
+def some_method(self, param1: str, param2: int, param3: bool = False, param4: float = 0.0):
+    ...
+```
+
+becomes
+
+```python
+def some_method(
+    self,
+    param1: str,
+    param2: int,
+    param3: bool = False,
+    param4: float = 0.0,
+):
+    ...
+```
+
 **Break a method chain** — split a long `.`-chain one segment per line.
 This is done for lines that can't be shortened by exploding a bracket:
 
@@ -82,6 +104,13 @@ intersects an over-long line, chosen by:
 1. multi-item containers only (>= 2 args/elements); single-item
    containers are never opened — see "Contract" below.
 2. outermost (shallowest) of those.
+
+A "container" is a call, list, tuple, set, dict or subscript, plus the
+parameter list of a `def`/`async def` and the base/keyword list of a
+`class`. A function's parens are implicit and a class's are optional
+(`class Bar:`), but both explode like any other bracket. A trailing comma
+after `*args` / `**kwargs` is valid in a `def`, so the exploded form stays
+correct.
 
 Then re-measure and repeat. "Explode" = each element on its own line at
 a +4 hanging indent, with a trailing comma, and the closing bracket
