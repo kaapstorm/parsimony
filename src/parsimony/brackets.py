@@ -128,6 +128,26 @@ def explode_bracket(node, inner, outer):
     return _set_open_ws(node, parenthesized_ws(inner))
 
 
+def _already_exploded(node):
+    """True if a node's own bracket already carries a line break.
+
+    Scoped to the node's own header: the opening whitespace, and the commas
+    of its direct children. A line break inside a *nested* bracket does not
+    count -- that was the old whole-node ``code_for_node`` test, which
+    reported an unbroken header as exploded whenever anything inside it was
+    broken, and so left over-long lines unfixed.
+    """
+    def is_paren_space(space):
+        return isinstance(space, cst.ParenthesizedWhitespace)
+
+    if is_paren_space(_open_ws(node)):
+        return True
+    return any(
+        is_paren_space(getattr(kid.comma, 'whitespace_after', None))
+        for kid in children_of(node)
+    )
+
+
 class BracketExploder(cst.CSTTransformer):
     """Explode the single node whose full span matches `target`.
 
@@ -185,7 +205,7 @@ class BracketCollector(cst.CSTVisitor):
             return False
         if isinstance(node, BRACKETED):
             pos = self.get_metadata(PositionProvider, node)
-            already = '\n' in cst.Module([]).code_for_node(node)
+            already = _already_exploded(node)
             self.found.append(
                 {
                     'pos': pos,

@@ -144,3 +144,39 @@ class OpenWhitespaceAccess:
         updated = _set_open_ws(node, marker)
         assert len(updated.lpar) == 2
         assert updated.lpar[0].whitespace_after.deep_equals(marker)
+
+
+@test
+class NestedBreakDoesNotMaskAnOverlongHeader:
+    # Testing the whole node for a newline could not tell "my own bracket is
+    # open" from "some bracket nested inside me is open". So an unbroken but
+    # over-long header was reported as already exploded, and left unfixed.
+    CODE = (
+        'result = some_function_with_a_longish_name('
+        'alpha_value_here, beta_value_here, gamma, [\n'
+        '    1111111,\n'
+        '    2222222,\n'
+        '])\n'
+    )
+    EXPECTED = (
+        'result = some_function_with_a_longish_name(\n'
+        '    alpha_value_here,\n'
+        '    beta_value_here,\n'
+        '    gamma,\n'
+        '    [\n'
+        '    1111111,\n'
+        '    2222222,\n'
+        '],\n'
+        ')\n'
+    )
+
+    def explodes_the_outer_call(self):
+        # The inner list stays where it was, misaligned. Re-indenting the
+        # contents of an already-broken nested container is separate work.
+        formatted, skipped = parsimony.format_code(self.CODE)
+        assert formatted == self.EXPECTED
+        assert skipped == []
+
+    def the_result_is_idempotent(self):
+        formatted, _skipped = parsimony.format_code(self.CODE)
+        assert fmt(formatted) == formatted
