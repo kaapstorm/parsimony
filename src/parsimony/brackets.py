@@ -1,15 +1,31 @@
 """Exploding bracketed containers one element per line."""
 
 import libcst as cst
-from libcst.metadata import PositionProvider
+from libcst.metadata import CodeRange, PositionProvider
 
 from parsimony.core import parenthesized_ws, span
 
-# Node types that carry an explodable comma-separated child list.
-BRACKETED = (cst.Call, cst.List, cst.Tuple, cst.Set, cst.Dict, cst.Subscript)
+# Node types that carry an explodable comma-separated child list. The name
+# is kept for continuity though a FunctionDef header is not a literal bracket
+# pair -- a def's parens are implicit.
+BRACKETED = (
+    cst.Call,
+    cst.List,
+    cst.Tuple,
+    cst.Set,
+    cst.Dict,
+    cst.Subscript,
+    cst.FunctionDef,
+    cst.ClassDef,
+)
 
 # Where each type's comma-separated children live, in source order. A slot is
-# ``(attribute_name, is_sequence)``.
+# ``(attribute_name, is_sequence)``. An absent optional slot holds
+# ``MaybeSentinel.DEFAULT`` or ``None`` -- never a ``CSTNode`` -- so the one
+# presence test ``isinstance(value, cst.CSTNode)`` covers all of them.
+#
+# Keyed on cst.Parameters rather than cst.FunctionDef because that is where a
+# def's slots actually live; _slot_container bridges the difference.
 _SLOTS = {
     cst.Call: (('args', True),),
     cst.List: (('elements', True),),
@@ -17,18 +33,43 @@ _SLOTS = {
     cst.Set: (('elements', True),),
     cst.Dict: (('elements', True),),
     cst.Subscript: (('slice', True),),
+    cst.ClassDef: (('bases', True), ('keywords', True)),
+    cst.Parameters: (
+        ('posonly_params', True),
+        ('posonly_ind', False),
+        ('params', True),
+        ('star_arg', False),
+        ('kwonly_params', True),
+        ('star_kwarg', False),
+    ),
 }
 
 # Where the whitespace just inside the opening bracket lives. An int step
 # indexes a sequence; a str step names an attribute.
 _OPEN_WS = {
     cst.Call: ('whitespace_before_args',),
+    cst.FunctionDef: ('whitespace_before_params',),
     cst.List: ('lbracket', 'whitespace_after'),
     cst.Subscript: ('lbracket', 'whitespace_after'),
     cst.Set: ('lbrace', 'whitespace_after'),
     cst.Dict: ('lbrace', 'whitespace_after'),
+    cst.ClassDef: ('lpar', 'whitespace_after'),
     cst.Tuple: ('lpar', 0, 'whitespace_after'),
 }
+
+
+def _slot_container(node):
+    """The node whose attribute slots hold the comma-separated children."""
+    if isinstance(node, cst.FunctionDef):
+        return node.params
+    return node
+
+
+def _with_slot_container(node, container):
+    """The inverse of ``_slot_container``: put ``container`` on ``node``."""
+    if isinstance(node, cst.FunctionDef):
+        return node.with_changes(params=container)
+    return container
 
 
 def flatten_slots(container):
@@ -69,7 +110,7 @@ def unflatten_slots(container, plan, children):
 
 def children_of(node):
     """Return the comma-separated children for an explodable node."""
-    children, _plan = flatten_slots(node)
+    children, _plan = flatten_slots(_slot_container(node))
     return children
 
 
@@ -78,9 +119,12 @@ def is_multi_item(node):
 
 
 def is_explodable(node):
-    """A bare tuple (`a, b` with no parens) has no bracket to open."""
+    """A bare tuple (`a, b` with no parens) has no bracket to open. A class
+    with no base list (`class Bar:`) likewise has no parens to open."""
     if isinstance(node, cst.Tuple):
         return bool(node.lpar)
+    if isinstance(node, cst.ClassDef):
+        return isinstance(node.lpar, cst.LeftParen)
     return True
 
 
@@ -103,7 +147,12 @@ def _path_set(obj, path, value):
 
 def _open_ws(node):
     """The whitespace just inside a node's opening bracket, or ``None`` if
-    it has no bracket to open (a bare tuple)."""
+    it has no bracket to open (a bare tuple, a paren-less class).
+
+    The ``is_explodable`` guard is load-bearing: ``BracketCollector`` asks
+    ``_already_exploded`` about every BRACKETED node, including the
+    bracket-less ones, whose ``lpar`` would not survive the path walk.
+    """
     if not is_explodable(node):
         return None
     return _path_get(node, _OPEN_WS[type(node)])
@@ -116,7 +165,8 @@ def _set_open_ws(node, ws):
 
 def explode_bracket(node, inner, outer):
     """Return ``node`` with its children split one-per-line."""
-    kids, plan = flatten_slots(node)
+    container = _slot_container(node)
+    kids, plan = flatten_slots(container)
     new_kids = []
     for i, kid in enumerate(kids):
         last = i == len(kids) - 1
@@ -124,8 +174,28 @@ def explode_bracket(node, inner, outer):
         comma = cst.Comma(whitespace_after=whitespace_after)
         new_kids.append(kid.with_changes(comma=comma))
 
-    node = unflatten_slots(node, plan, new_kids)
+    container = unflatten_slots(container, plan, new_kids)
+    node = _with_slot_container(node, container)
     return _set_open_ws(node, parenthesized_ws(inner))
+
+
+def header_pos(get_metadata, node):
+    """The position of a node's explodable region.
+
+    For most nodes this is the node's own span. A def/class node spans the
+    whole body, so we return only the header: the parameter list for a
+    FunctionDef, the paren range for a ClassDef. This keeps the indent,
+    over-long-line intersection and span-matching correct.
+    """
+    if isinstance(node, cst.FunctionDef):
+        return get_metadata(PositionProvider, node.params)
+    if isinstance(node, cst.ClassDef):
+        if not isinstance(node.lpar, cst.LeftParen):
+            return get_metadata(PositionProvider, node)
+        lpar = get_metadata(PositionProvider, node.lpar)
+        rpar = get_metadata(PositionProvider, node.rpar)
+        return CodeRange(start=lpar.start, end=rpar.end)
+    return get_metadata(PositionProvider, node)
 
 
 def _already_exploded(node):
@@ -164,7 +234,7 @@ class BracketExploder(cst.CSTTransformer):
         self.outer = outer
 
     def _maybe(self, original, updated):
-        pos = self.get_metadata(PositionProvider, original)
+        pos = header_pos(self.get_metadata, original)
         if span(pos) == self.target:
             return explode_bracket(updated, self.inner, self.outer)
         return updated
@@ -187,6 +257,14 @@ class BracketExploder(cst.CSTTransformer):
     def leave_Subscript(self, original_node, updated_node):
         return self._maybe(original_node, updated_node)
 
+    def leave_ClassDef(self, original_node, updated_node):
+        if not isinstance(original_node.lpar, cst.LeftParen):
+            return updated_node
+        return self._maybe(original_node, updated_node)
+
+    def leave_FunctionDef(self, original_node, updated_node):
+        return self._maybe(original_node, updated_node)
+
 
 class BracketCollector(cst.CSTVisitor):
     """Collect bracketed nodes with their position, depth and number of
@@ -204,7 +282,7 @@ class BracketCollector(cst.CSTVisitor):
             # exploding them would corrupt the literal. Don't descend.
             return False
         if isinstance(node, BRACKETED):
-            pos = self.get_metadata(PositionProvider, node)
+            pos = header_pos(self.get_metadata, node)
             already = _already_exploded(node)
             self.found.append(
                 {
