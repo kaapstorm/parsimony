@@ -4,9 +4,22 @@ Changelog
 Unreleased
 ----------
 
+### Added
+
+- Explode over-long `def`/`async def` parameter lists and `class` base
+  lists, one element per line.
+
+### Fixed
+
+- An over-long line is no longer left unfixed when the container that
+  needs exploding holds an already-broken nested container.
+
 ### Internal
 
 - Simplified tests.
+- Replaced the per-type dispatch in the bracket exploder with slot and
+  opening-whitespace tables, so the flatten and rebuild halves can no
+  longer drift apart.
 
 
 [0.1.3] (2026-06-29)
