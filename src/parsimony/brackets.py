@@ -1,4 +1,5 @@
 """Exploding bracketed containers one element per line."""
+
 import libcst as cst
 from libcst.metadata import PositionProvider
 
@@ -7,14 +8,69 @@ from parsimony.core import parenthesized_ws, span
 # Node types that carry an explodable comma-separated child list.
 BRACKETED = (cst.Call, cst.List, cst.Tuple, cst.Set, cst.Dict, cst.Subscript)
 
+# Where each type's comma-separated children live, in source order. A slot is
+# ``(attribute_name, is_sequence)``.
+_SLOTS = {
+    cst.Call: (('args', True),),
+    cst.List: (('elements', True),),
+    cst.Tuple: (('elements', True),),
+    cst.Set: (('elements', True),),
+    cst.Dict: (('elements', True),),
+    cst.Subscript: (('slice', True),),
+}
+
+# Where the whitespace just inside the opening bracket lives. An int step
+# indexes a sequence; a str step names an attribute.
+_OPEN_WS = {
+    cst.Call: ('whitespace_before_args',),
+    cst.List: ('lbracket', 'whitespace_after'),
+    cst.Subscript: ('lbracket', 'whitespace_after'),
+    cst.Set: ('lbrace', 'whitespace_after'),
+    cst.Dict: ('lbrace', 'whitespace_after'),
+    cst.Tuple: ('lpar', 0, 'whitespace_after'),
+}
+
+
+def flatten_slots(container):
+    """Return ``(children, plan)`` for a slot container.
+
+    ``children`` are the comma-carrying elements in source order. ``plan``
+    records how many children came from each slot, so ``unflatten_slots``
+    can put them back without re-deriving the occupancy: both halves read
+    the one description in ``_SLOTS`` instead of mirroring each other by
+    hand.
+    """
+    children = []
+    plan = []
+    for name, is_sequence in _SLOTS[type(container)]:
+        value = getattr(container, name)
+        if is_sequence:
+            got = list(value)
+        else:
+            got = [value] if isinstance(value, cst.CSTNode) else []
+        children.extend(got)
+        plan.append((name, is_sequence, len(got)))
+    return children, plan
+
+
+def unflatten_slots(container, plan, children):
+    """Write ``children`` back into the slots recorded by ``plan``."""
+    changes = {}
+    it = iter(children)
+    for name, is_sequence, count in plan:
+        taken = [next(it) for _ in range(count)]
+        if is_sequence:
+            changes[name] = taken
+        elif taken:
+            changes[name] = taken[0]
+        # An absent optional slot keeps its MaybeSentinel.DEFAULT / None.
+    return container.with_changes(**changes)
+
 
 def children_of(node):
-    """Return the comma-separated children for a bracketed node."""
-    if isinstance(node, cst.Call):
-        return list(node.args)
-    if isinstance(node, cst.Subscript):
-        return list(node.slice)
-    return list(node.elements)
+    """Return the comma-separated children for an explodable node."""
+    children, _plan = flatten_slots(node)
+    return children
 
 
 def is_multi_item(node):
@@ -28,9 +84,39 @@ def is_explodable(node):
     return True
 
 
+def _path_get(obj, path):
+    for step in path:
+        obj = obj[step] if isinstance(step, int) else getattr(obj, step)
+    return obj
+
+
+def _path_set(obj, path, value):
+    step, rest = path[0], path[1:]
+    if rest:
+        value = _path_set(_path_get(obj, (step,)), rest, value)
+    if isinstance(step, int):
+        seq = list(obj)
+        seq[step] = value
+        return seq
+    return obj.with_changes(**{step: value})
+
+
+def _open_ws(node):
+    """The whitespace just inside a node's opening bracket, or ``None`` if
+    it has no bracket to open (a bare tuple)."""
+    if not is_explodable(node):
+        return None
+    return _path_get(node, _OPEN_WS[type(node)])
+
+
+def _set_open_ws(node, ws):
+    """Return ``node`` with ``ws`` just inside its opening bracket."""
+    return _path_set(node, _OPEN_WS[type(node)], ws)
+
+
 def explode_bracket(node, inner, outer):
     """Return ``node`` with its children split one-per-line."""
-    kids = children_of(node)
+    kids, plan = flatten_slots(node)
     new_kids = []
     for i, kid in enumerate(kids):
         last = i == len(kids) - 1
@@ -38,24 +124,8 @@ def explode_bracket(node, inner, outer):
         comma = cst.Comma(whitespace_after=whitespace_after)
         new_kids.append(kid.with_changes(comma=comma))
 
-    open_ws = parenthesized_ws(inner)
-    if isinstance(node, cst.Call):
-        return node.with_changes(whitespace_before_args=open_ws, args=new_kids)
-    if isinstance(node, cst.Subscript):
-        lbracket = node.lbracket.with_changes(whitespace_after=open_ws)
-        return node.with_changes(lbracket=lbracket, slice=new_kids)
-    if isinstance(node, cst.List):
-        lbracket = node.lbracket.with_changes(whitespace_after=open_ws)
-        return node.with_changes(lbracket=lbracket, elements=new_kids)
-    if isinstance(node, (cst.Set, cst.Dict)):
-        lbrace = node.lbrace.with_changes(whitespace_after=open_ws)
-        return node.with_changes(lbrace=lbrace, elements=new_kids)
-    assert isinstance(node, cst.Tuple)
-    lpar = [
-        node.lpar[0].with_changes(whitespace_after=open_ws),
-        *node.lpar[1:],
-    ]
-    return node.with_changes(lpar=lpar, elements=new_kids)
+    node = unflatten_slots(node, plan, new_kids)
+    return _set_open_ws(node, parenthesized_ws(inner))
 
 
 class BracketExploder(cst.CSTTransformer):

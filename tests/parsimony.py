@@ -2,9 +2,12 @@
 Tests for the parsimony line-breaker.
 """
 from textwrap import dedent
+
+import libcst as cst
 from testsweet import params, test
 
 import parsimony
+from parsimony.brackets import _open_ws, _set_open_ws
 
 
 def fmt(code):
@@ -105,3 +108,39 @@ def overlong_but_unfixable_is_left_alone_and_reported(code):
     formatted, skipped = parsimony.format_code(code)
     assert formatted == code
     assert len(skipped) == 1
+
+
+@test
+class OpenWhitespaceAccess:
+    # _open_ws and _set_open_ws replace two parallel isinstance ladders --
+    # one that read the whitespace just inside the opening bracket and one
+    # that wrote it -- with a single path table.
+    MARKER = cst.ParenthesizedWhitespace(
+        first_line=cst.TrailingWhitespace(newline=cst.Newline()),
+        indent=False,
+        last_line=cst.SimpleWhitespace('    '),
+    )
+
+    @params([
+        ('f(a, b)',),
+        ('[a, b]',),
+        ('(a, b)',),
+        ('{a, b}',),
+        ("{'a': 1, 'b': 2}",),
+        ('x[a, b]',),
+    ])
+    def round_trips_the_opening_whitespace(self, source):
+        node = cst.parse_expression(source)
+        assert _open_ws(node) is not None, source
+        updated = _set_open_ws(node, self.MARKER)
+        assert _open_ws(updated).deep_equals(self.MARKER), source
+
+    def preserves_outer_parens_of_a_tuple(self):
+        # Tuple.lpar is a sequence; only the innermost paren carries the
+        # opening whitespace, and the rest must survive untouched.
+        marker = cst.SimpleWhitespace('  ')
+        node = cst.parse_expression('((a, b))')
+        assert len(node.lpar) == 2
+        updated = _set_open_ws(node, marker)
+        assert len(updated.lpar) == 2
+        assert updated.lpar[0].whitespace_after.deep_equals(marker)
