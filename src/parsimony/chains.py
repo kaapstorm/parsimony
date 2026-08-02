@@ -2,7 +2,7 @@
 import libcst as cst
 from libcst.metadata import ParentNodeProvider, PositionProvider
 
-from parsimony.core import parenthesized_ws, span
+from parsimony.core import Reindenter, parenthesized_ws, span
 
 # A method chain is only broken if it has at least this many call segments
 # (``.method(...)`` links). A lone ``obj.method(args)`` is not a chain --
@@ -54,19 +54,6 @@ def _break_spine(node, inner):
     return node
 
 
-class _Reindenter(cst.CSTTransformer):
-    """Shift every existing line break's hanging indent by `delta` spaces."""
-
-    def __init__(self, delta):
-        self.delta = delta
-
-    def leave_ParenthesizedWhitespace(self, original_node, updated_node):
-        last = updated_node.last_line
-        return updated_node.with_changes(
-            last_line=last.with_changes(value=last.value + ' ' * self.delta)
-        )
-
-
 def break_chain(node, inner, outer):
     """Return ``node`` with its chain split one-segment-per-line.
 
@@ -79,7 +66,7 @@ def break_chain(node, inner, outer):
     by the same amount to keep them aligned under their new, deeper segment.
     """
     delta = len(inner) - len(outer)
-    node = node.visit(_Reindenter(delta))
+    node = node.visit(Reindenter(delta))
     broken = _break_spine(node, inner)
     open_ws = parenthesized_ws(inner)
     close_ws = parenthesized_ws(outer)
