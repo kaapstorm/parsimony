@@ -751,3 +751,55 @@ def a_condition_is_broken_in_preference_to_a_chain_inside_it():
         ):
             pass
     """)
+
+
+@test
+class ConditionsLeftAlone:
+    # Each of these is an over-long condition the breaker deliberately
+    # does not touch. They are pinned so the boundary is enforced rather
+    # than assumed -- if one starts being fixed, that should be a
+    # decision, not a surprise.
+
+    def a_negated_condition_is_reported_not_broken(self):
+        # `not (...)` makes the test a UnaryOperation, so there is no
+        # candidate. Supporting it means deciding where the inserted
+        # parens go relative to the `not`.
+        code = (
+            'if not (some_condition_value and another_condition_value'
+            ' and a_third_condition_v):\n'
+            '    pass\n'
+        )
+        formatted, skipped = parsimony.format_code(code)
+        assert formatted == code
+        assert [lineno for lineno, _text in skipped] == [1]
+
+    def a_spine_inside_a_bracket_is_reported_not_broken(self):
+        # A single-item call is never opened, and the spine inside it is
+        # not a test expression, so the line stays over-long.
+        code = (
+            'if some_check_function(alpha_value_here and beta_value_here'
+            ' and gamma_value_xyzz):\n'
+            '    pass\n'
+        )
+        formatted, skipped = parsimony.format_code(code)
+        assert formatted == code
+        assert [lineno for lineno, _text in skipped] == [1]
+
+    def an_assert_condition_is_reported_not_broken(self):
+        code = (
+            'assert some_condition_value and another_condition_value'
+            ' and a_third_condition_xyz\n'
+        )
+        formatted, skipped = parsimony.format_code(code)
+        assert formatted == code
+        assert [lineno for lineno, _text in skipped] == [1]
+
+    def a_returned_boolean_is_reported_not_broken(self):
+        code = (
+            'def f():\n'
+            '    return some_condition_value and another_condition_value'
+            ' and a_third_condition\n'
+        )
+        formatted, skipped = parsimony.format_code(code)
+        assert formatted == code
+        assert [lineno for lineno, _text in skipped] == [2]
