@@ -5,7 +5,7 @@ A minimalist line-breaker that adds the fewest breaks to fit the line.
 
 Unlike black/blue/ruff, which explode the outermost bracket first and
 stack every closing bracket on its own line, Parsimony makes the
-smallest change that fits an over-long line, using two complementary
+smallest change that fits an over-long line, using three complementary
 strategies.
 
 **Explode a bracket** — open the minimum number of brackets and coalesce
