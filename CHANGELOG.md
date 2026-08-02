@@ -1,8 +1,8 @@
 Changelog
 =========
 
-Unreleased
-----------
+[0.1.4] (2026-08-02)
+--------------------
 
 ### Added
 
@@ -24,6 +24,8 @@ Unreleased
 - Replaced the per-type dispatch in the bracket exploder with slot and
   opening-whitespace tables, so the flatten and rebuild halves can no
   longer drift apart.
+
+[0.1.4]: https://github.com/kaapstorm/parsimony/releases/tag/v0.1.4
 
 
 [0.1.3] (2026-06-29)
