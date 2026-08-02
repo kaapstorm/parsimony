@@ -14,6 +14,11 @@ from parsimony.brackets import (
     flatten_slots,
     unflatten_slots,
 )
+from parsimony.conditions import (
+    _condition_already_broken,
+    break_condition,
+    spine_operators,
+)
 
 
 def fmt(code):
@@ -503,3 +508,60 @@ def explode_reindents_a_child_starting_on_a_later_line():
     """)
     assert fmt(code) == expected
     assert fmt(expected) == expected  # idempotent
+
+
+@test
+class ConditionSpines:
+    def flattens_every_joint_across_precedence(self):
+        # `a and b or c and d` parses as `(a and b) or (c and d)`, so the
+        # higher-precedence `and`s sit on both sides of the `or`. A
+        # left-only walk -- what chain_info does -- would find only two.
+        node = cst.parse_expression('alpha and beta or gamma and delta')
+        assert len(list(spine_operators(node))) == 3
+
+    def stops_at_an_author_parenthesized_operand(self):
+        node = cst.parse_expression('alpha and (beta or gamma)')
+        assert len(list(spine_operators(node))) == 1
+
+    def enters_a_parenthesized_root(self):
+        # The lpar cutoff applies to operands, not to the node the
+        # breaker was handed: `if (a and b):` must still be breakable.
+        node = cst.parse_expression('(alpha and beta)')
+        assert len(list(spine_operators(node))) == 1
+
+    def yields_nothing_for_a_non_boolean_expression(self):
+        node = cst.parse_expression('alpha == beta')
+        assert list(spine_operators(node)) == []
+
+    def an_unbroken_condition_is_not_already_broken(self):
+        node = cst.parse_expression('alpha and beta')
+        assert not _condition_already_broken(node)
+
+    def a_broken_condition_is_detected(self):
+        node = break_condition(
+            cst.parse_expression('alpha and beta'), '    ', ''
+        )
+        assert _condition_already_broken(node)
+
+    def break_condition_renders_one_operand_per_line(self):
+        node = cst.parse_expression('alpha and beta or gamma')
+        rendered = cst.Module([]).code_for_node(
+            break_condition(node, '    ', '')
+        )
+        assert rendered == dedent("""\
+            (
+                alpha
+                and beta
+                or gamma
+            )""")
+
+    def break_condition_reuses_existing_parens(self):
+        node = cst.parse_expression('(alpha and beta)')
+        rendered = cst.Module([]).code_for_node(
+            break_condition(node, '    ', '')
+        )
+        assert rendered == dedent("""\
+            (
+                alpha
+                and beta
+            )""")
