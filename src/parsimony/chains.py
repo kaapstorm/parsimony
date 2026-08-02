@@ -2,7 +2,7 @@
 import libcst as cst
 from libcst.metadata import ParentNodeProvider, PositionProvider
 
-from parsimony.core import Reindenter, parenthesized_ws, span
+from parsimony.core import break_in_parens, paren_line, parenthesized_ws, span
 
 # A method chain is only broken if it has at least this many call segments
 # (``.method(...)`` links). A lone ``obj.method(args)`` is not a chain --
@@ -54,32 +54,14 @@ def _break_spine(node, inner):
     return node
 
 
-def break_chain(node, inner, outer):
+def break_chain(node, inner, outer, delta=None):
     """Return ``node`` with its chain split one-segment-per-line.
 
     The head stays on the opening line; each ``.attr`` is dedented onto its
-    own ``+4`` line. The whole expression is wrapped in parentheses (reusing
-    existing ones if already parenthesized) so the line breaks are legal.
-
-    Breaking shifts every segment in by ``inner - outer`` (one INDENT), so
-    any brackets the exploder already opened inside a segment are re-indented
-    by the same amount to keep them aligned under their new, deeper segment.
+    own ``+4`` line. The paren-wrapping and the reindent are shared with
+    ``break_condition``; see ``break_in_parens``.
     """
-    delta = len(inner) - len(outer)
-    node = node.visit(Reindenter(delta))
-    broken = _break_spine(node, inner)
-    open_ws = parenthesized_ws(inner)
-    close_ws = parenthesized_ws(outer)
-    if broken.lpar:
-        first_lpar = broken.lpar[0].with_changes(whitespace_after=open_ws)
-        last_rpar = broken.rpar[-1].with_changes(whitespace_before=close_ws)
-        lpar = [first_lpar, *broken.lpar[1:]]
-        rpar = [*broken.rpar[:-1], last_rpar]
-        return broken.with_changes(lpar=lpar, rpar=rpar)
-    return broken.with_changes(
-        lpar=[cst.LeftParen(whitespace_after=open_ws)],
-        rpar=[cst.RightParen(whitespace_before=close_ws)],
-    )
+    return break_in_parens(node, _break_spine, inner, outer, delta)
 
 
 class ChainBreaker(cst.CSTTransformer):
@@ -92,15 +74,16 @@ class ChainBreaker(cst.CSTTransformer):
 
     METADATA_DEPENDENCIES = (PositionProvider,)
 
-    def __init__(self, target, inner, outer):
+    def __init__(self, target, inner, outer, delta):
         self.target = target  # (start_line, start_col, end_line, end_col)
         self.inner = inner
         self.outer = outer
+        self.delta = delta
 
     def _maybe(self, original, updated):
         pos = self.get_metadata(PositionProvider, original)
         if span(pos) == self.target:
-            return break_chain(updated, self.inner, self.outer)
+            return break_chain(updated, self.inner, self.outer, self.delta)
         return updated
 
     def leave_Call(self, original_node, updated_node):
@@ -134,5 +117,9 @@ class ChainCollector(cst.CSTVisitor):
                 if segments >= MIN_CHAIN_SEGMENTS:
                     pos = self.get_metadata(PositionProvider, node)
                     broken = _chain_already_broken(dots)
-                    self.found.append({'pos': pos, 'broken': broken})
+                    self.found.append({
+                        'pos': pos,
+                        'paren_line': paren_line(self.get_metadata, node),
+                        'broken': broken,
+                    })
         return True

@@ -2,7 +2,12 @@
 import libcst as cst
 from libcst.metadata import PositionProvider
 
-from parsimony.core import Reindenter, parenthesized_ws, span
+from parsimony.core import (
+    break_in_parens,
+    paren_line,
+    parenthesized_ws,
+    span,
+)
 
 # Statements whose header is a condition we know how to break. Both span
 # their body, but their ``.test`` does not -- so, unlike def/class, the
@@ -62,34 +67,15 @@ def _break_operand(node, inner):
     return node
 
 
-def break_condition(node, inner, outer):
+def break_condition(node, inner, outer, delta=None):
     """Return the boolean expression ``node`` split one operand per line.
 
     Every operand goes on its own ``+4`` line -- each but the first led by
     its operator -- and the closing paren is dedented to the opening
-    line's indent. The expression is wrapped in parentheses (reusing
-    existing ones if already parenthesized) so the breaks are legal.
-
-    Breaking shifts every operand in by ``inner - outer`` (one INDENT), so
-    any brackets the exploder already opened inside the condition are
-    re-indented by the same amount.
+    line's indent. The paren-wrapping and the reindent are shared with
+    ``break_chain``; see ``break_in_parens``.
     """
-    delta = len(inner) - len(outer)
-    node = node.visit(Reindenter(delta))
-    broken = _break_spine(node, inner)
-    open_ws = parenthesized_ws(inner)
-    close_ws = parenthesized_ws(outer)
-    if broken.lpar:
-        first_lpar = broken.lpar[0].with_changes(whitespace_after=open_ws)
-        last_rpar = broken.rpar[-1].with_changes(whitespace_before=close_ws)
-        return broken.with_changes(
-            lpar=[first_lpar, *broken.lpar[1:]],
-            rpar=[*broken.rpar[:-1], last_rpar],
-        )
-    return broken.with_changes(
-        lpar=[cst.LeftParen(whitespace_after=open_ws)],
-        rpar=[cst.RightParen(whitespace_before=close_ws)],
-    )
+    return break_in_parens(node, _break_spine, inner, outer, delta)
 
 
 class ConditionBreaker(cst.CSTTransformer):
@@ -102,15 +88,18 @@ class ConditionBreaker(cst.CSTTransformer):
 
     METADATA_DEPENDENCIES = (PositionProvider,)
 
-    def __init__(self, target, inner, outer):
+    def __init__(self, target, inner, outer, delta):
         self.target = target  # (start_line, start_col, end_line, end_col)
         self.inner = inner
         self.outer = outer
+        self.delta = delta
 
     def leave_BooleanOperation(self, original_node, updated_node):
         pos = self.get_metadata(PositionProvider, original_node)
         if span(pos) == self.target:
-            return break_condition(updated_node, self.inner, self.outer)
+            return break_condition(
+                updated_node, self.inner, self.outer, self.delta
+            )
         return updated_node
 
 
@@ -138,6 +127,7 @@ class ConditionCollector(cst.CSTVisitor):
         ):
             self.found.append({
                 'pos': self.get_metadata(PositionProvider, node.test),
+                'paren_line': paren_line(self.get_metadata, node.test),
                 'broken': _condition_already_broken(node.test),
             })
         return True

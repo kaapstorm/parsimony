@@ -716,6 +716,191 @@ def condition_break_reindents_an_already_exploded_call():
 
 
 @test
+class BreakingAnAlreadyParenthesizedExpression:
+    # PositionProvider EXCLUDES an expression's own parentheses, so for
+    # one the author already spread across lines, the node's start is the
+    # CONTINUATION line. Taking the indent from there put the operands a
+    # level too deep and the closing paren at the body's indent.
+
+    def a_condition_breaks_at_the_statement_indent(self):
+        code = (
+            'if (\n'
+            '    some_condition_value_here and another_condition_values'
+            ' and a_third_cond_valu\n'
+            '):\n'
+            '    pass\n'
+        )
+        expected = dedent("""\
+            if (
+                some_condition_value_here
+                and another_condition_values
+                and a_third_cond_valu
+            ):
+                pass
+        """)
+        assert fmt(code) == expected
+        assert fmt(expected) == expected  # idempotent
+
+    def a_chain_breaks_at_the_statement_indent(self):
+        code = (
+            'x = (\n'
+            "    SomeModel.objects.filter_alpha('value').order_by('bbbb')"
+            ".prefetch('related')\n"
+            ')\n'
+        )
+        expected = dedent("""\
+            x = (
+                SomeModel
+                .objects
+                .filter_alpha('value')
+                .order_by('bbbb')
+                .prefetch('related')
+            )
+        """)
+        assert fmt(code) == expected
+        assert fmt(expected) == expected  # idempotent
+
+    def an_already_exploded_call_inside_does_not_move(self):
+        # The operands stay on the line they are already on, so -- unlike
+        # the flat case -- nothing inside them shifts. A blanket +4
+        # reindent would misalign the exploded call's arguments.
+        code = (
+            'if (\n'
+            '    check_one(\n'
+            '        alpha_value_here,\n'
+            '        beta_value_here,\n'
+            '    ) and some_quite_long_condition_name'
+            ' and another_condition_names_here_xyzabc\n'
+            '):\n'
+            '    pass\n'
+        )
+        expected = dedent("""\
+            if (
+                check_one(
+                    alpha_value_here,
+                    beta_value_here,
+                )
+                and some_quite_long_condition_name
+                and another_condition_names_here_xyzabc
+            ):
+                pass
+        """)
+        assert fmt(code) == expected
+        assert fmt(expected) == expected  # idempotent
+
+
+@test
+class CommentsBesideReusedParens:
+    # Overwriting a reused paren's whitespace wholesale destroys any
+    # comment living there. Silent data loss is not an acceptable
+    # outcome -- declining to format would be, but here we can keep it.
+
+    def a_condition_keeps_an_opening_comment(self):
+        code = (
+            'if (  # explain the check\n'
+            '    some_condition_value_here and another_condition_values'
+            ' and a_third_cond_valu\n'
+            '):\n'
+            '    pass\n'
+        )
+        expected = dedent("""\
+            if (  # explain the check
+                some_condition_value_here
+                and another_condition_values
+                and a_third_cond_valu
+            ):
+                pass
+        """)
+        assert fmt(code) == expected
+        assert fmt(expected) == expected  # idempotent
+
+    def a_chain_keeps_an_opening_comment(self):
+        code = (
+            'x = (  # explain the chain\n'
+            "    SomeModel.objects.filter_alpha('value').order_by('bbbb')"
+            ".prefetch('related')\n"
+            ')\n'
+        )
+        expected = dedent("""\
+            x = (  # explain the chain
+                SomeModel
+                .objects
+                .filter_alpha('value')
+                .order_by('bbbb')
+                .prefetch('related')
+            )
+        """)
+        assert fmt(code) == expected
+        assert fmt(expected) == expected  # idempotent
+
+    def a_condition_keeps_a_closing_comment(self):
+        code = (
+            'if (\n'
+            '    some_condition_value_here and another_condition_values'
+            ' and a_third_cond_valu\n'
+            '    # a closing note\n'
+            '):\n'
+            '    pass\n'
+        )
+        expected = dedent("""\
+            if (
+                some_condition_value_here
+                and another_condition_values
+                and a_third_cond_valu
+                # a closing note
+            ):
+                pass
+        """)
+        assert fmt(code) == expected
+        assert fmt(expected) == expected  # idempotent
+
+    def a_chain_keeps_a_closing_comment(self):
+        code = (
+            'x = (\n'
+            "    SomeModel.objects.filter_alpha('value').order_by('bbbb')"
+            ".prefetch('related')\n"
+            '    # a closing note\n'
+            ')\n'
+        )
+        expected = dedent("""\
+            x = (
+                SomeModel
+                .objects
+                .filter_alpha('value')
+                .order_by('bbbb')
+                .prefetch('related')
+                # a closing note
+            )
+        """)
+        assert fmt(code) == expected
+        assert fmt(expected) == expected  # idempotent
+
+    def an_indented_opening_comment_keeps_its_body_indent(self):
+        # A reused ParenthesizedWhitespace carries libcst's own indent
+        # tracking, which would be applied ON TOP of the indent we
+        # compute. Nested one level in, that would double it.
+        code = (
+            'def f():\n'
+            '    if (  # explain\n'
+            '        some_condition_value_here and another_condition_val'
+            ' and a_third_cond_val\n'
+            '    ):\n'
+            '        pass\n'
+        )
+        expected = dedent("""\
+            def f():
+                if (  # explain
+                    some_condition_value_here
+                    and another_condition_val
+                    and a_third_cond_val
+                ):
+                    pass
+        """)
+        assert fmt(code) == expected
+        assert fmt(expected) == expected  # idempotent
+
+
+@test
 def a_bracket_that_fixes_the_line_is_preferred_over_the_condition():
     # Bracket explosion comes first in the strategy order, so a call that
     # can be opened is opened and the condition is left alone.

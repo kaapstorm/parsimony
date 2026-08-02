@@ -65,11 +65,14 @@ def format_code(code):
                 key=lambda c: (c['pos'].start.line, c['pos'].start.column),
             )
             pos = chosen['pos']
-            outer = line_indent(code, pos.start.line)
+            outer = line_indent(code, chosen['paren_line'])
             inner = outer + INDENT
+            delta = inner - line_indent(code, pos.start.line)
 
             wrapper = MetadataWrapper(cst.parse_module(code))
-            breaker = ConditionBreaker(span(pos), ' ' * inner, ' ' * outer)
+            breaker = ConditionBreaker(
+                span(pos), ' ' * inner, ' ' * outer, delta
+            )
             code = wrapper.visit(breaker).code
             continue
 
@@ -93,11 +96,12 @@ def format_code(code):
             key=lambda c: (c['pos'].start.line, c['pos'].start.column),
         )
         pos = chosen['pos']
-        outer = line_indent(code, pos.start.line)
+        outer = line_indent(code, chosen['paren_line'])
         inner = outer + INDENT
+        delta = inner - line_indent(code, pos.start.line)
 
         wrapper = MetadataWrapper(cst.parse_module(code))
-        breaker = ChainBreaker(span(pos), ' ' * inner, ' ' * outer)
+        breaker = ChainBreaker(span(pos), ' ' * inner, ' ' * outer, delta)
         code = wrapper.visit(breaker).code
 
     lines = code.splitlines()
