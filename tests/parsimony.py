@@ -189,17 +189,17 @@ class ExplodingDefParams:
         result = fmt(code)
         assert result != code  # the over-long line was fixed
         assert fmt(result) == result  # idempotent
-        assert result == (
-            'def configure(\n'
-            '    first_option_argument_long,\n'
-            '    second_option_argument_xx,\n'
-            '    third_opt={\n'
-            "    'a': 1,\n"
-            "    'b': 2,\n"
-            '},\n'
-            '):\n'
-            '    ...\n'
-        )
+        assert result == dedent("""\
+            def configure(
+                first_option_argument_long,
+                second_option_argument_xx,
+                third_opt={
+                    'a': 1,
+                    'b': 2,
+                },
+            ):
+                ...
+        """)
 
 
 @test
@@ -244,6 +244,63 @@ class ExplodingClassBases:
             ):
                 pass
         """)
+
+
+@test
+class ExplodingAHeaderLeavesTheBodyAlone:
+    # A def/class node spans its whole body, so a reindent applied to the
+    # node -- rather than to its children -- shifts every pre-existing
+    # break in the body by +4. That corrupts code Parsimony must never
+    # touch, and it is idempotent, so a re-run does not repair it.
+
+    def a_def_body_is_not_reindented(self):
+        code = (
+            'def some_function_name(alpha_parameter, beta_parameter, '
+            'gamma_parameter, delta):\n'
+            '    result = compute(\n'
+            '        first_argument,\n'
+            '        second_argument,\n'
+            '    )\n'
+            '    return result\n'
+        )
+        expected = dedent("""\
+            def some_function_name(
+                alpha_parameter,
+                beta_parameter,
+                gamma_parameter,
+                delta,
+            ):
+                result = compute(
+                    first_argument,
+                    second_argument,
+                )
+                return result
+        """)
+        assert fmt(code) == expected
+        assert fmt(expected) == expected  # idempotent
+
+    def a_class_body_is_not_reindented(self):
+        code = (
+            'class MyView(LoginRequiredMixin, GenericDetailView, '
+            'ExtraMixinForGoodMeasureXyz):\n'
+            '    attribute = compute(\n'
+            '        first_argument,\n'
+            '        second_argument,\n'
+            '    )\n'
+        )
+        expected = dedent("""\
+            class MyView(
+                LoginRequiredMixin,
+                GenericDetailView,
+                ExtraMixinForGoodMeasureXyz,
+            ):
+                attribute = compute(
+                    first_argument,
+                    second_argument,
+                )
+        """)
+        assert fmt(code) == expected
+        assert fmt(expected) == expected  # idempotent
 
 
 @test
@@ -392,27 +449,23 @@ class NestedBreakDoesNotMaskAnOverlongHeader:
         '    2222222,\n'
         '])\n'
     )
-    EXPECTED = (
-        'result = some_function_with_a_longish_name(\n'
-        '    alpha_value_here,\n'
-        '    beta_value_here,\n'
-        '    gamma,\n'
-        '    [\n'
-        '    1111111,\n'
-        '    2222222,\n'
-        '],\n'
-        ')\n'
-    )
+    EXPECTED = dedent("""\
+        result = some_function_with_a_longish_name(
+            alpha_value_here,
+            beta_value_here,
+            gamma,
+            [
+                1111111,
+                2222222,
+            ],
+        )
+    """)
 
     def explodes_the_outer_call(self):
-        # The inner list stays where it was, misaligned. That matches the
-        # existing behaviour for a def with a multi-line default -- see
-        # ExplodingDefParams.explodes_def_with_multiline_default -- and is
-        # out of scope here.
-        #
-        # This expectation is pinned, not endorsed: re-indenting the
-        # contents of an already-broken nested container is the next piece
-        # of work, and it will rewrite this string and that one.
+        # Exploding the call shifts every child in by one INDENT, so the
+        # list's own already-broken contents shift with it and stay
+        # aligned under their new position. This is the same reindent
+        # break_chain does when wrapping shifts a chain deeper.
         formatted, skipped = parsimony.format_code(self.CODE)
         assert formatted == self.EXPECTED
         assert skipped == []
@@ -420,3 +473,33 @@ class NestedBreakDoesNotMaskAnOverlongHeader:
     def the_result_is_idempotent(self):
         formatted, _skipped = parsimony.format_code(self.CODE)
         assert fmt(formatted) == formatted
+
+
+@test
+def explode_reindents_a_child_starting_on_a_later_line():
+    # The second list starts on line 3, not on the container's opening
+    # line, so it is the case a single container-wide delta might get
+    # wrong. It does not: Parsimony dedents a closing bracket to its own
+    # opening line's indent, so a following sibling resumes at `outer`
+    # and shifts by the same one INDENT as the rest.
+    code = (
+        'result = some_function_with_a_really_quite_long_name_here('
+        'alpha_value_here_xyz, [\n'
+        '    1111111,\n'
+        '], [\n'
+        '    2222222,\n'
+        '])\n'
+    )
+    expected = dedent("""\
+        result = some_function_with_a_really_quite_long_name_here(
+            alpha_value_here_xyz,
+            [
+                1111111,
+            ],
+            [
+                2222222,
+            ],
+        )
+    """)
+    assert fmt(code) == expected
+    assert fmt(expected) == expected  # idempotent

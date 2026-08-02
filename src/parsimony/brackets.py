@@ -3,7 +3,7 @@
 import libcst as cst
 from libcst.metadata import CodeRange, PositionProvider
 
-from parsimony.core import parenthesized_ws, span
+from parsimony.core import Reindenter, parenthesized_ws, span
 
 # Node types that carry an explodable comma-separated child list. The name
 # is kept for continuity though a FunctionDef header is not a literal bracket
@@ -164,11 +164,26 @@ def _set_open_ws(node, ws):
 
 
 def explode_bracket(node, inner, outer):
-    """Return ``node`` with its children split one-per-line."""
+    """Return ``node`` with its children split one-per-line.
+
+    Exploding moves every child from the opening line to ``inner``, one
+    INDENT deeper, so any breaks a child already carries are shifted by
+    the same amount to keep them aligned under their new position. This
+    is the reindent ``break_chain`` does for the same reason.
+
+    The reindent is applied to each CHILD, not to the node: a def/class
+    node spans its whole body, and reindenting that would shift every
+    pre-existing break in the body -- code we must never touch. Applying
+    it per child is equivalent for the expression cases, because the
+    node's only other whitespace slots (the opening whitespace, and each
+    comma's ``whitespace_after``) are overwritten below anyway.
+    """
+    delta = len(inner) - len(outer)
     container = _slot_container(node)
     kids, plan = flatten_slots(container)
     new_kids = []
     for i, kid in enumerate(kids):
+        kid = kid.visit(Reindenter(delta))
         last = i == len(kids) - 1
         whitespace_after = parenthesized_ws(outer if last else inner)
         comma = cst.Comma(whitespace_after=whitespace_after)
