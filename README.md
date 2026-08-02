@@ -64,7 +64,26 @@ queryset = (
 )
 ```
 
-Both keep related calls grouped and give long pipelines a clean
+**Break a condition** — split the boolean operators of an over-long
+`if`, `elif` or `while` header one per line:
+
+```python
+if some_condition_value and another_condition_value and a_third_condition_value:
+    ...
+```
+
+becomes
+
+```python
+if (
+    some_condition_value
+    and another_condition_value
+    and a_third_condition_value
+):
+    ...
+```
+
+Each keeps related code grouped and gives long expressions a clean
 one-operation-per-line shape.
 
 
@@ -119,13 +138,22 @@ container and never its single-item parents, adjacent openers like
 `get(reverse(` remain coalesced. Coalescing is not about depth, only
 about not opening single-item wrappers.
 
-When no multi-item container intersects a remaining over-long line, fall
-back to breaking the outermost method chain on it (>= 2 call segments,
-as shown above): wrap it in parentheses and put the head plus each
-`.attr` on its own +4 line. Bracket explosion is preferred — a chain is
-only broken when opening a bracket cannot fix the line — which keeps
-breaks minimal. Any brackets already opened inside a segment are
-re-indented to stay aligned under their now-deeper segment.
+Exploding a container shifts its children one level deeper, so any breaks
+they already carry are re-indented to match — the same adjustment chain
+breaking makes.
+
+When no multi-item container intersects a remaining over-long line, and
+that line is an `if`, `elif` or `while` header whose condition is a
+boolean expression, wrap the condition in parentheses and put a break
+before every `and` / `or`. Operands the author already parenthesised stay
+on one line — a hand-written group is a grouping decision, not a joint.
+
+When neither applies, fall back to breaking the outermost method chain on
+it (>= 2 call segments, as shown above): wrap it in parentheses and put
+the head plus each `.attr` on its own +4 line. Bracket explosion is
+preferred — a chain is only broken when opening a bracket cannot fix the
+line — which keeps breaks minimal. Any brackets already opened inside a
+segment are re-indented to stay aligned under their now-deeper segment.
 
 
 Contract
@@ -147,9 +175,13 @@ avoids ugly single-element splits.
 Limitations
 -----------
 
-- Lines long for non-bracket, non-method-chain reasons — ternaries,
-  boolean/arithmetic chains, pure attribute chains (no calls), long
+- Lines long for non-bracket, non-chain, non-condition reasons —
+  ternaries, arithmetic chains, pure attribute chains (no calls), long
   string literals — are left untouched and reported, not fixed.
+- Boolean expressions outside an `if`/`elif`/`while` condition — in an
+  `assert`, a `return`, an assignment — are not broken. Neither is a
+  negated condition (`if not (a and b):`), nor a boolean expression
+  nested inside a bracket in the header (`if check(a and b and c):`).
 - No "join" pass: it will not re-flow code that another tool has already
   split. It only acts on lines that are physically too long.
 - Comments inside brackets and pre-existing trailing commas are not

@@ -8,11 +8,15 @@ Unreleased
 
 - Explode over-long `def`/`async def` parameter lists and `class` base
   lists, one element per line.
+- Break over-long `if`, `elif` and `while` conditions, one operand per
+  line, before every `and` / `or`.
 
 ### Fixed
 
 - An over-long line is no longer left unfixed when the container that
   needs exploding holds an already-broken nested container.
+- Exploding a container around an already-broken child no longer leaves
+  that child's contents at their old indent.
 
 ### Internal
 
