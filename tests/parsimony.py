@@ -565,3 +565,189 @@ class ConditionSpines:
                 alpha
                 and beta
             )""")
+
+
+@test
+class BreakingConditions:
+    BROKEN = dedent("""\
+        if (
+            some_condition_value
+            and another_condition_value
+            and a_third_condition_value
+        ):
+            pass
+    """)
+
+    def breaks_a_long_if_condition(self):
+        code = (
+            'if some_condition_value and another_condition_value'
+            ' and a_third_condition_value:\n'
+            '    pass\n'
+        )
+        assert fmt(code) == self.BROKEN
+
+    def breaking_a_condition_is_idempotent(self):
+        assert fmt(self.BROKEN) == self.BROKEN
+
+    def breaks_an_elif_condition(self):
+        code = (
+            'if x:\n'
+            '    pass\n'
+            'elif some_condition_value and another_condition_value'
+            ' and a_third_condition_val:\n'
+            '    pass\n'
+        )
+        assert fmt(code) == dedent("""\
+            if x:
+                pass
+            elif (
+                some_condition_value
+                and another_condition_value
+                and a_third_condition_val
+            ):
+                pass
+        """)
+
+    def breaks_a_while_condition(self):
+        code = (
+            'while some_condition_value and another_condition_value'
+            ' and a_third_condition_val:\n'
+            '    pass\n'
+        )
+        assert fmt(code) == dedent("""\
+            while (
+                some_condition_value
+                and another_condition_value
+                and a_third_condition_val
+            ):
+                pass
+        """)
+
+    def breaks_at_the_conditions_own_indent(self):
+        code = (
+            'def f():\n'
+            '    if some_condition_value and another_condition_value'
+            ' and a_third_condition_v:\n'
+            '        pass\n'
+        )
+        assert fmt(code) == dedent("""\
+            def f():
+                if (
+                    some_condition_value
+                    and another_condition_value
+                    and a_third_condition_v
+                ):
+                    pass
+        """)
+
+    def flattens_every_joint_regardless_of_precedence(self):
+        code = (
+            'if alpha_value_here and beta_value_here or gamma_value_here'
+            ' and delta_value_heree:\n'
+            '    pass\n'
+        )
+        assert fmt(code) == dedent("""\
+            if (
+                alpha_value_here
+                and beta_value_here
+                or gamma_value_here
+                and delta_value_heree
+            ):
+                pass
+        """)
+
+    def keeps_an_author_parenthesized_operand_on_one_line(self):
+        code = (
+            'if alpha_value_here and (beta_value_here or gamma_value_here)'
+            ' and delta_value_xyz:\n'
+            '    pass\n'
+        )
+        assert fmt(code) == dedent("""\
+            if (
+                alpha_value_here
+                and (beta_value_here or gamma_value_here)
+                and delta_value_xyz
+            ):
+                pass
+        """)
+
+    def reuses_an_already_parenthesized_test(self):
+        code = (
+            'if (some_condition_value and another_condition_value'
+            ' and a_third_condition_xyzz):\n'
+            '    pass\n'
+        )
+        assert fmt(code) == dedent("""\
+            if (
+                some_condition_value
+                and another_condition_value
+                and a_third_condition_xyzz
+            ):
+                pass
+        """)
+
+
+@test
+def condition_break_reindents_an_already_exploded_call():
+    # `check_one` is multi-arg, so it explodes first. The tail is still
+    # too long, forcing a condition break that shifts everything +4. The
+    # call's already-exploded args must shift +4 too, or they end up
+    # misaligned. This is the analogue of
+    # chain_break_reindents_already_exploded_segment_args.
+    code = (
+        'if check_one(alpha_value_here, beta_value_here)'
+        ' and some_quite_long_condition_name_here'
+        ' and another_condition_name_goes_right_here:\n'
+        '    pass\n'
+    )
+    expected = dedent("""\
+        if (
+            check_one(
+                alpha_value_here,
+                beta_value_here,
+            )
+            and some_quite_long_condition_name_here
+            and another_condition_name_goes_right_here
+        ):
+            pass
+    """)
+    assert fmt(code) == expected
+    assert fmt(expected) == expected  # idempotent
+
+
+@test
+def a_bracket_that_fixes_the_line_is_preferred_over_the_condition():
+    # Bracket explosion comes first in the strategy order, so a call that
+    # can be opened is opened and the condition is left alone.
+    code = (
+        'if some_function_call(alpha_value, beta_value, gamma_value,'
+        ' delta_value) and flagg:\n'
+        '    pass\n'
+    )
+    assert fmt(code) == dedent("""\
+        if some_function_call(
+            alpha_value,
+            beta_value,
+            gamma_value,
+            delta_value,
+        ) and flagg:
+            pass
+    """)
+
+
+@test
+def a_condition_is_broken_in_preference_to_a_chain_inside_it():
+    # Conditions come before chains in the strategy order, and breaking
+    # the condition is enough, so the chain stays on one line.
+    code = (
+        'if base.filter_alpha().filter_beta().filter_gamma().filter_delta()'
+        ' and other_flagg:\n'
+        '    pass\n'
+    )
+    assert fmt(code) == dedent("""\
+        if (
+            base.filter_alpha().filter_beta().filter_gamma().filter_delta()
+            and other_flagg
+        ):
+            pass
+    """)

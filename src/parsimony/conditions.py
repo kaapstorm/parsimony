@@ -1,7 +1,8 @@
 """Breaking long boolean conditions one operand per line."""
 import libcst as cst
+from libcst.metadata import PositionProvider
 
-from parsimony.core import Reindenter, parenthesized_ws
+from parsimony.core import Reindenter, parenthesized_ws, span
 
 # Statements whose header is a condition we know how to break. Both span
 # their body, but their ``.test`` does not -- so, unlike def/class, the
@@ -89,3 +90,54 @@ def break_condition(node, inner, outer):
         lpar=[cst.LeftParen(whitespace_after=open_ws)],
         rpar=[cst.RightParen(whitespace_before=close_ws)],
     )
+
+
+class ConditionBreaker(cst.CSTTransformer):
+    """Break the single condition whose full span matches `target`.
+
+    Nested boolean operations share a start position, so -- like the
+    chain breaker -- we match the full (start, end) span to pin the
+    outermost node.
+    """
+
+    METADATA_DEPENDENCIES = (PositionProvider,)
+
+    def __init__(self, target, inner, outer):
+        self.target = target  # (start_line, start_col, end_line, end_col)
+        self.inner = inner
+        self.outer = outer
+
+    def leave_BooleanOperation(self, original_node, updated_node):
+        pos = self.get_metadata(PositionProvider, original_node)
+        if span(pos) == self.target:
+            return break_condition(updated_node, self.inner, self.outer)
+        return updated_node
+
+
+class ConditionCollector(cst.CSTVisitor):
+    """Collect if/elif/while conditions with their position and break state.
+
+    Only a test that is itself a BooleanOperation is a candidate. A spine
+    nested inside a bracket in the header is deliberately not one: the
+    bracket already supplies parens, and wrapping the spine in a second
+    pair reads badly.
+    """
+
+    METADATA_DEPENDENCIES = (PositionProvider,)
+
+    def __init__(self):
+        self.found = []
+
+    def on_visit(self, node):
+        if isinstance(node, cst.FormattedString):
+            # A condition inside an f-string is string content, not code:
+            # breaking it would corrupt the literal. Don't descend.
+            return False
+        if isinstance(node, CONDITIONAL) and isinstance(
+            node.test, cst.BooleanOperation
+        ):
+            self.found.append({
+                'pos': self.get_metadata(PositionProvider, node.test),
+                'broken': _condition_already_broken(node.test),
+            })
+        return True
